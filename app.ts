@@ -1,7 +1,7 @@
 const https = require('https');
 const { Telegraf } = require('telegraf');
 const cheerio = require('cheerio');
-const {  CronJob } = require('cron');
+const schedule = require('node-schedule');
 
 function loadPage (url: string): Promise<cheerio.Root|undefined> {
     return new Promise((resolve, reject) => {
@@ -40,37 +40,42 @@ async function checkAvailibility(url: string): Promise<{ available: boolean, url
     };
 }
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+let jobs = [];
 
+const bot = new Telegraf(`${process.env.BOT_TOKEN}`);
 
-bot.start((ctx) => ctx.reply('Welcome'))
 bot.help((ctx) => ctx.replyWithHTML(`
-Witaj w domowy robocie!
-<code>/decathlon {url}</code> - sprawdza czy dany produkt jest dostępny w sklepie decathlon.pl
+    Witaj w domowy robocie!
+    <code>/decathlon {url}</code> - sprawdza czy dany produkt jest dostępny w sklepie decathlon.pl
 `))
-bot.on('sticker', (ctx) => ctx.reply('👍'))
-bot.hears('hi', (ctx) => ctx.reply('Hey there'))
-bot.command('hipster', Telegraf.reply('λ'))
+
 bot.command('decathlon', async (ctx) => {
-    const [cmd, url] = ctx.message.text.split(' ');
-    const { available } = await checkAvailibility(url.trim());
+    const [cmd, url, ...crons] = ctx.message.text.split(' ');
+    const cron = crons.join(' ');
+    jobs.push(schedule.scheduleJob(cron, async () => {
+        const { available } = await checkAvailibility(url.trim());
+        ctx.replyWithHTML(`Powyzszy produkt <b>${available ? 'jest' : 'nie jest'} dostępny</b>`, {
+            reply_to_message_id: ctx.message.message_id,
+        });    
+    }));
+});
 
-    ctx.replyWithHTML(`Powyzszy produkt <b>${available ? 'jest' : 'nie jest'} dostępny</b>`, {
-        reply_to_message_id: ctx.message.message_id,
-    });
+bot.command('clear', async (ctx) => {
+    jobs.forEach(job => job.cancel());
+    jobs = [];
 });
 
 
-bot.on('inline_query', (ctx) => {
-    const result = []
-    // Explicit usage
-    ctx.telegram.answerInlineQuery(ctx.inlineQuery.id, result)
-  
-    // Using context shortcut
-    ctx.answerInlineQuery(result)
-});
-  
-bot.launch()
 
-process.once('SIGINT', () => bot.stop('SIGINT'))
-process.once('SIGTERM', () => bot.stop('SIGTERM'))
+bot.launch();
+
+process.once('SIGINT', () => {
+    jobs.forEach(job => job.cancel());
+    jobs = [];
+    return bot.stop('SIGINT');
+});
+process.once('SIGTERM', () => {
+    jobs.forEach(job => job.cancel());
+    jobs = [];
+    return bot.stop('SIGTERM');
+});
