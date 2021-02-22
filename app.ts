@@ -1,4 +1,5 @@
 const https = require('https');
+
 const { Telegraf } = require('telegraf');
 const cheerio = require('cheerio');
 const schedule = require('node-schedule');
@@ -23,9 +24,8 @@ function loadPage (url: string): Promise<cheerio.Root|undefined> {
 }
 
 async function checkAvailibility(url: string): Promise<{ available: boolean, url: string }> {
-    let $;
     try {
-        $ = await loadPage(url);
+        const $ = await loadPage(url);
         const available = $('.stock-notification__invite--active').length === 0;
         return {
             available,
@@ -47,7 +47,7 @@ const bot = new Telegraf(`${process.env.BOT_TOKEN}`);
 bot.help((ctx) => ctx.replyWithHTML(`
     Witaj w domowy robocie!
     <code>/decathlon {url}</code> - sprawdza czy dany produkt jest dostępny w sklepie decathlon.pl
-`))
+`));
 
 bot.command('decathlon', async (ctx) => {
     const [cmd, url, ...crons] = ctx.message.text.split(' ');
@@ -56,7 +56,7 @@ bot.command('decathlon', async (ctx) => {
         const { available } = await checkAvailibility(url.trim());
         ctx.replyWithHTML(`Powyzszy produkt <b>${available ? 'jest' : 'nie jest'} dostępny</b>`, {
             reply_to_message_id: ctx.message.message_id,
-        });    
+        });
     }));
 });
 
@@ -65,8 +65,6 @@ bot.command('clear', async (ctx) => {
     jobs = [];
 });
 
-
-
 bot.launch();
 
 process.once('SIGINT', () => {
@@ -74,6 +72,7 @@ process.once('SIGINT', () => {
     jobs = [];
     return bot.stop('SIGINT');
 });
+
 process.once('SIGTERM', () => {
     jobs.forEach(job => job.cancel());
     jobs = [];
